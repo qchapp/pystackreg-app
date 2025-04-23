@@ -3,7 +3,7 @@ A web-based application for image stack registration powered by **Gradio** and *
 This tool allows users to align and stabilize multi-frame TIFF images using a variety of transformation models.
 
 <p align="center">
-    <img src="images/app.png" height="700">
+    <img src="images/app.png" height="500">
 </p>
 
 ---
