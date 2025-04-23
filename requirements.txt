@@ -1,0 +1,4 @@
+gradio==5.25.1
+pystackreg
+tifffile
+imageio
