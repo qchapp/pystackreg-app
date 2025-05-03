@@ -1,17 +1,3 @@
----
-title: Pystackreg Web App
-emoji: 🧠
-colorFrom: indigo
-colorTo: cyan
-sdk: gradio
-sdk_version: 4.24.0
-app_file: app.py
-pinned: false
-tags:
-  - image-processing
-  - registration
-  - pystackreg
----
 # 🧠 Stack Image Registration Web App  
 A web-based application for image stack registration powered by **Gradio** and **pystackreg**.  
 This tool allows users to align and stabilize multi-frame TIFF images using a variety of transformation models.
