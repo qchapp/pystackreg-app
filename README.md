@@ -1,3 +1,17 @@
+---
+title: Pystackreg Web App
+emoji: 🧠
+colorFrom: indigo
+colorTo: cyan
+sdk: gradio
+sdk_version: 4.24.0
+app_file: app.py
+pinned: false
+tags:
+  - image-processing
+  - registration
+  - pystackreg
+---
 # 🧠 Stack Image Registration Web App  
 A web-based application for image stack registration powered by **Gradio** and **pystackreg**.  
 This tool allows users to align and stabilize multi-frame TIFF images using a variety of transformation models.
@@ -9,7 +23,7 @@ This tool allows users to align and stabilize multi-frame TIFF images using a va
 ---
 
 ## 🚀 Try the App  
-The application is running on [Hugging Face](https://huggingface.co/), try it using this [link](https://huggingface.co/spaces/your-username/pystackreg-app)!
+The application is running on [Hugging Face](https://huggingface.co/), try it using this [link](https://huggingface.co/spaces/qchapp/pystackreg-app)!
 
 ---
 
@@ -66,5 +80,25 @@ Each mode offers:
 - 🧭 Frame-by-frame navigation
 - 💾 Downloadable aligned results
 - ⚙️ Customizable transformation models via advanced options
+
+---
+
+### 📚 Credits
+
+- **App Author**: [Quentin Chappuis](https://github.com/qchapp)  
+  Developed the Gradio-based web interface and integrated `pystackreg` for image stack registration.
+
+- **Core Registration Library**: [pystackreg](https://github.com/glichtner/pystackreg)  
+  A Python port of the StackReg plugin, written by [Gregor Lichtenberg](https://github.com/glichtner).
+
+- **Original Algorithm Author**: Philippe Thévenaz (EPFL)  
+  The core algorithm was originally developed by Philippe Thévenaz and is described in the following publication:
+
+  > P. Thévenaz, U.E. Ruttimann, M. Unser.  
+  > *A Pyramid Approach to Subpixel Registration Based on Intensity*.  
+  > IEEE Transactions on Image Processing, vol. 7, no. 1, pp. 27–41, January 1998.  
+  > [View paper](http://bigwww.epfl.ch/publications/thevenaz9801.html)
+
+  For more information, visit the [Biomedical Imaging Group at EPFL](http://bigwww.epfl.ch/).
 
 ---
