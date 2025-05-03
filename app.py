@@ -90,7 +90,10 @@ def frame_to_frame_align(file, ref_idx, mov_idx, mode):
 # Interface
 with gr.Blocks() as demo:
     gr.Markdown("# 🧠 Pystackreg Web Application")
-    gr.Markdown("Register TIFF stacks using multiple alignment strategies.")
+    gr.Markdown(citation_markdown)
+
+    with gr.Accordion("📘 How to Use This App (Click to Expand)", open=False):
+        gr.Markdown(documentation_markdown)
 
     with gr.Tab("📚 Reference-Based Alignment"):
         with gr.Row():
@@ -223,5 +226,5 @@ with gr.Blocks() as demo:
             outputs=[frame_file, ref_idx, mov_idx, frame_output, download_ftf]
         )
 
-
-demo.launch()
+if __name__ == "__main__":
+    demo.launch()
