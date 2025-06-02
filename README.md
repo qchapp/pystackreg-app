@@ -69,6 +69,45 @@ Each mode offers:
 
 ---
 
+### 📂 Examples in the App
+
+You can try the application directly using preloaded examples from the [`pystackreg`](https://github.com/glichtner/pystackreg) repository.  
+Each mode includes interactive buttons that load demo TIFF stacks automatically:
+
+- 📚 **Reference-Based Alignment**:  
+  Loads a stack of PC12 microscopy frames.
+
+- 🎯 **Stack-Based Alignment**:  
+  Loads both an unregistered and a translation-aligned stack.
+
+- 🧩 **Frame-to-Frame Alignment**:  
+  Uses the same unregistered stack for aligning specific frames.
+
+No need to upload your own files — just click and experiment!
+
+---
+
+### 🌐 URL Parameter Support
+
+The app supports loading image stacks from external URLs using query parameters.
+
+**▶️ Load a single stack (for Reference-Based or Frame-to-Frame):**
+
+```
+https://huggingface.co/spaces/qchapp/pystackreg-app?file_url=https://github.com/glichtner/pystackreg/raw/master/examples/data/pc12-unreg.tif
+```
+
+
+**▶️ Load two stacks (for Stack-Based Alignment):**
+
+```
+https://huggingface.co/spaces/qchapp/pystackreg-app?file_url_1=https://github.com/glichtner/pystackreg/raw/master/examples/data/pc12-unreg.tif&file_url_2=https://github.com/glichtner/pystackreg/raw/master/examples/data/pc12-reg-translation.tif
+```
+
+> 💡 The app will automatically load and preview the provided stack(s) in the appropriate tabs.
+
+---
+
 ### 📚 Credits
 
 - **App Author**: [Quentin Chappuis](https://github.com/qchapp)  
