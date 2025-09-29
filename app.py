@@ -6,8 +6,15 @@ import imageio.v2 as iio
 import tifffile
 import tempfile
 import urllib.request
+import os
 
-from core.utils import *
+from core.utils import (
+    get_sr_mode, normalize_stack, upscale, load_stack,
+    _is_demo_url, _demo_path_for_url,
+    _start_cleaner, citation_markdown, documentation_markdown
+)
+
+_start_cleaner()
 
 # Globals
 original_frames, aligned_frames = [], []
@@ -90,8 +97,13 @@ def load_from_url(request: gr.Request):
     if "file_url" in params:
         try:
             url = params["file_url"]
-            tmp_path = tempfile.mktemp(suffix=".tif")
-            urllib.request.urlretrieve(url, tmp_path)
+            if _is_demo_url(url):
+                tmp_path = _demo_path_for_url(url)
+                if not os.path.exists(tmp_path):
+                    urllib.request.urlretrieve(url, tmp_path)
+            else:
+                tmp_path = tempfile.mktemp(suffix=".tif")  # goes to WORK_DIR
+                urllib.request.urlretrieve(url, tmp_path)
             return [gr.update(value=tmp_path)]
         except Exception as e:
             print(f"[URL load failed] {e}")
@@ -276,8 +288,13 @@ with gr.Blocks() as demo:
         if "file_url" in params:
             try:
                 url = params["file_url"]
-                tmp_path = tempfile.mktemp(suffix=".tif")
-                urllib.request.urlretrieve(url, tmp_path)
+                if _is_demo_url(url):
+                    tmp_path = _demo_path_for_url(url)
+                    if not os.path.exists(tmp_path):
+                        urllib.request.urlretrieve(url, tmp_path)
+                else:
+                    tmp_path = tempfile.mktemp(suffix=".tif")  # goes to WORK_DIR
+                    urllib.request.urlretrieve(url, tmp_path)
                 stack = iio.mimread(tmp_path)
                 max_frame = len(stack) - 1
 
@@ -293,10 +310,24 @@ with gr.Blocks() as demo:
         # Two-stack file case (for stack-based alignment)
         if "file_url_1" in params and "file_url_2" in params:
             try:
-                tmp_path_1 = tempfile.mktemp(suffix=".tif")
-                tmp_path_2 = tempfile.mktemp(suffix=".tif")
-                urllib.request.urlretrieve(params["file_url_1"], tmp_path_1)
-                urllib.request.urlretrieve(params["file_url_2"], tmp_path_2)
+                u1, u2 = params["file_url_1"], params["file_url_2"]
+
+                if _is_demo_url(u1):
+                    tmp_path_1 = _demo_path_for_url(u1)
+                    if not os.path.exists(tmp_path_1):
+                        urllib.request.urlretrieve(u1, tmp_path_1)
+                else:
+                    tmp_path_1 = tempfile.mktemp(suffix=".tif")  # goes to WORK_DIR
+                    urllib.request.urlretrieve(u1, tmp_path_1)
+
+                if _is_demo_url(u2):
+                    tmp_path_2 = _demo_path_for_url(u2)
+                    if not os.path.exists(tmp_path_2):
+                        urllib.request.urlretrieve(u2, tmp_path_2)
+                else:
+                    tmp_path_2 = tempfile.mktemp(suffix=".tif")  # goes to WORK_DIR
+                    urllib.request.urlretrieve(u2, tmp_path_2)
+
                 results[5] = tmp_path_1  # ref_input
                 results[6] = tmp_path_2  # mov_input
             except Exception as e:

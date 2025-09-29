@@ -2,6 +2,11 @@ from pystackreg import StackReg
 import numpy as np
 import imageio.v2 as iio
 from PIL import Image
+import time
+import threading
+import hashlib
+import tempfile
+import os
 
 def get_sr_mode(mode_str): return {
     "TRANSLATION": StackReg.TRANSLATION,
@@ -29,6 +34,48 @@ def load_stack(file):
     if stack.ndim == 4 and stack.shape[-1] == 3:
         stack = np.mean(stack, axis=-1)
     return normalize_stack(stack)
+
+
+##### CACHE #####
+
+# App-scoped cache dirs under the OS temp
+APP_TMP_ROOT = os.path.join(tempfile.gettempdir(), "psr_cache")
+WORK_DIR = os.path.join(APP_TMP_ROOT, "work")   # cleaned periodically
+DEMO_DIR = os.path.join(APP_TMP_ROOT, "demo")   # persistent demo cache
+os.makedirs(WORK_DIR, exist_ok=True)
+os.makedirs(DEMO_DIR, exist_ok=True)
+
+# Direct all tempfile.* calls to WORK_DIR so cleanup is safe
+tempfile.tempdir = WORK_DIR
+
+TTL_SECONDS = 30 * 60  # 30 minutes
+
+def _cleanup_old_files(folder, older_than_seconds):
+    now = time.time()
+    for root, _, files in os.walk(folder):
+        for name in files:
+            p = os.path.join(root, name)
+            try:
+                if now - os.path.getmtime(p) > older_than_seconds:
+                    os.remove(p)
+            except Exception as e:
+                print(f"[cleanup] {e}")
+
+def _start_cleaner():
+    def loop():
+        while True:
+            _cleanup_old_files(WORK_DIR, TTL_SECONDS)  # only clean WORK_DIR
+            time.sleep(TTL_SECONDS)
+    threading.Thread(target=loop, daemon=True).start()
+
+
+def _is_demo_url(url: str) -> bool:
+    return ("github.com/glichtner/pystackreg" in url) or \
+           ("raw.githubusercontent.com/glichtner/pystackreg" in url)
+
+def _demo_path_for_url(url: str, suffix=".tif"):
+    h = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+    return os.path.join(DEMO_DIR, f"psr-demo-{h}{suffix}")
 
 
 ##### Markdowns #####
