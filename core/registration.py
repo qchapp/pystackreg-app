@@ -198,6 +198,7 @@ def align_frame_to_frame(
     sr = StackReg(get_sr_mode(mode))
     aligned = normalize_stack(np.stack([sr.register_transform(stack[reference_index], stack[moving_index])]))[0]
 
-    out_path = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
+    fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
     tifffile.imwrite(out_path, aligned[np.newaxis, ...], photometric="minisblack")
     return out_path
