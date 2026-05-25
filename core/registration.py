@@ -109,7 +109,8 @@ def align_stack_to_reference(
     sr = StackReg(get_sr_mode(mode))
     aligned = normalize_stack(np.stack([sr.register_transform(ref_frame, fr) for fr in stack]))
 
-    out_path = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
+    temp_fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(temp_fd)
     tifffile.imwrite(out_path, aligned, photometric="minisblack")
     return out_path
 
