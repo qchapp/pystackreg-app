@@ -139,8 +139,13 @@ def _read_frame(path, idx, scale=False):
 
 def _count_frames(path: str) -> int:
     """Return the number of frames in a TIFF file without loading pixel data."""
-    with tifffile.TiffFile(path) as tf:
-        return len(tf.pages)
+    if not path or not os.path.exists(path):
+        return 0
+    try:
+        with tifffile.TiffFile(path) as tf:
+            return len(tf.pages)
+    except Exception as exc:
+        raise gr.Error("Unable to read the uploaded TIFF file. Please upload a valid, non-corrupt TIFF stack.") from exc
 
 # Interface
 with gr.Blocks() as demo:
