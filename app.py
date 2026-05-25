@@ -1,5 +1,4 @@
 import gradio as gr
-import numpy as np
 from PIL import Image
 import tifffile
 import tempfile
