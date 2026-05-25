@@ -152,6 +152,6 @@ documentation_markdown = """
 
         ### 🧠 Credits
 
-        App developed by **Quentin Chapuis**  
+        App developed by **Quentin Chappuis**  
         Library: [`pystackreg`](https://github.com/glichtner/pystackreg) by **Georg Lichtenberg**
         """

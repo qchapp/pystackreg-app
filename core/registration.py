@@ -72,6 +72,58 @@ def _block_private_url(url: str) -> None:
             )
 
 
+def _download_tiff_to_work_dir(url: str, label: str) -> str:
+    """Download *url* to a temp file in WORK_DIR, validating TIFF magic and size.
+
+    Uses chunked streaming so that the full file is never held in memory.
+    Raises ValueError on SSRF, size-limit, or magic-byte failures.
+    Cleans up the temp file before raising on any error.
+    """
+    _block_private_url(url)
+
+    fd, local_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
+
+    total = 0
+    first4 = b""
+
+    try:
+        with urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT) as resp, open(local_path, "wb") as f:  # noqa: S310
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+
+                if len(first4) < 4:
+                    first4 = (first4 + chunk[: 4 - len(first4)])[:4]
+                    if len(first4) == 4 and not any(first4.startswith(magic) for magic in _TIFF_MAGIC):
+                        raise ValueError(f"{label} does not appear to be a valid TIFF file.")
+
+                total += len(chunk)
+                if total > _MAX_DOWNLOAD_BYTES:
+                    raise ValueError(
+                        f"{label} exceeds the maximum allowed download size of "
+                        f"{_MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB."
+                    )
+
+                f.write(chunk)
+
+        if total == 0:
+            raise ValueError(f"{label} is empty.")
+
+        if len(first4) < 4 or not any(first4.startswith(magic) for magic in _TIFF_MAGIC):
+            raise ValueError(f"{label} does not appear to be a valid TIFF file.")
+
+        return local_path
+
+    except Exception:
+        try:
+            os.unlink(local_path)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def _resolve_path(path_or_url: str, label: str = "file") -> str:
     """Return a local, sandbox-safe path for *path_or_url*.
 
@@ -83,27 +135,7 @@ def _resolve_path(path_or_url: str, label: str = "file") -> str:
       previous tool calls) or DEMO_DIR (for cached demo files).
     """
     if path_or_url.startswith(("http://", "https://")):
-        _block_private_url(path_or_url)
-        fd, local_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
-        os.close(fd)
-        try:
-            with urllib.request.urlopen(path_or_url, timeout=_DOWNLOAD_TIMEOUT) as resp:  # noqa: S310
-                data = resp.read(_MAX_DOWNLOAD_BYTES + 1)
-        except Exception as exc:
-            os.unlink(local_path)
-            raise ValueError(f"Failed to download {label} from '{path_or_url}': {exc}") from exc
-        if len(data) > _MAX_DOWNLOAD_BYTES:
-            os.unlink(local_path)
-            raise ValueError(
-                f"{label} exceeds the maximum allowed download size of "
-                f"{_MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB."
-            )
-        if not any(data.startswith(magic) for magic in _TIFF_MAGIC):
-            os.unlink(local_path)
-            raise ValueError(f"{label} does not appear to be a valid TIFF file.")
-        with open(local_path, "wb") as f:
-            f.write(data)
-        return local_path
+        return _download_tiff_to_work_dir(path_or_url, label)
     _require_file(path_or_url, label)
     return path_or_url
 

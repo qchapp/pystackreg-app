@@ -2,13 +2,11 @@ import gradio as gr
 from PIL import Image
 import tifffile
 import tempfile
-import urllib.request
 import os
 from typing import Optional
 
 from core.utils import (
     WORK_DIR, DEMO_DIR, upscale, load_stack,
-    _is_demo_url, _demo_path_for_url,
     _start_cleaner, citation_markdown, documentation_markdown
 )
 from core.registration import (
@@ -17,6 +15,7 @@ from core.registration import (
     align_frame_to_frame,
     _run_align_to_reference,
     _run_align_to_stack,
+    _resolve_path,
 )
 
 _start_cleaner()
@@ -173,7 +172,7 @@ with gr.Blocks() as demo:
         )
 
         with gr.Row():
-            ref_slider = gr.Slider(label="Reference Frame (from uploaded stack)", minimum=0, maximum=0, value=0, step=1, visible=True)
+            reference_frame_slider = gr.Slider(label="Reference Frame (from uploaded stack)", minimum=0, maximum=0, value=0, step=1, visible=True)
             ext_ref_file = gr.File(label="Upload External Reference Stack (.tif)", visible=False)
             ext_ref_slider = gr.Slider(label="Reference Frame (from external stack)", minimum=0, maximum=0, value=0, step=1, visible=False)
 
@@ -184,7 +183,7 @@ with gr.Blocks() as demo:
                 gr.update(visible=v)
             ),
             use_ext_ref,
-            [ref_slider, ext_ref_file, ext_ref_slider],
+            [reference_frame_slider, ext_ref_file, ext_ref_slider],
             show_api=False,
         )
 
@@ -216,13 +215,13 @@ with gr.Blocks() as demo:
         file_input.change(
             lambda f: gr.update(value=0, maximum=_count_frames(f) - 1) if f else gr.update(value=0, maximum=0),
             file_input,
-            ref_slider,
+            reference_frame_slider,
             show_api=False,
         )
 
         run_btn.click(
             intra_stack_align,
-            [file_input, ref_slider, ext_ref_file, ext_ref_slider, mode_dropdown],
+            [file_input, reference_frame_slider, ext_ref_file, ext_ref_slider, mode_dropdown],
             [original_image, original_slider, aligned_image, aligned_slider, download,
              original_path_state, aligned_path_state],
             show_api=False,
@@ -240,7 +239,7 @@ with gr.Blocks() as demo:
         gr.Button("🔄 Reset Tab").click(
             reset_intra_stack,
             outputs=[
-                file_input, ref_slider, ext_ref_file, ext_ref_slider,
+                file_input, reference_frame_slider, ext_ref_file, ext_ref_slider,
                 original_image, original_slider, aligned_image, aligned_slider, download,
                 original_path_state, aligned_path_state,
             ],
@@ -276,7 +275,7 @@ with gr.Blocks() as demo:
             reg_image = gr.Image(label="Registered Frame")
 
         with gr.Row():
-            ref_slider = gr.Slider(label="Browse Ref", minimum=0, maximum=0, value=0, step=1)
+            stack_ref_browse_slider = gr.Slider(label="Browse Ref", minimum=0, maximum=0, value=0, step=1)
             reg_slider = gr.Slider(label="Browse Reg", minimum=0, maximum=0, value=0, step=1)
 
         download_ref = gr.File(label="Download")
@@ -284,13 +283,13 @@ with gr.Blocks() as demo:
         ref_btn.click(
             reference_align,
             [ref_input, mov_input, mode_dropdown_ref],
-            [ref_image, ref_slider, reg_image, reg_slider, download_ref,
+            [ref_image, stack_ref_browse_slider, reg_image, reg_slider, download_ref,
              ref_path_state, reg_path_state],
             show_api=False,
         )
-        ref_slider.change(
+        stack_ref_browse_slider.change(
             lambda i, path: _read_frame(path, i, scale=False),
-            [ref_slider, ref_path_state], ref_image, show_api=False,
+            [stack_ref_browse_slider, ref_path_state], ref_image, show_api=False,
         )
         reg_slider.change(
             lambda i, path: _read_frame(path, i, scale=True),
@@ -299,7 +298,7 @@ with gr.Blocks() as demo:
 
         gr.Button("🔄 Reset Tab").click(
             reset_reference_based,
-            outputs=[ref_input, mov_input, ref_image, ref_slider, reg_image, reg_slider, download_ref,
+            outputs=[ref_input, mov_input, ref_image, stack_ref_browse_slider, reg_image, reg_slider, download_ref,
                      ref_path_state, reg_path_state],
             show_api=False,
         )
@@ -349,9 +348,8 @@ with gr.Blocks() as demo:
         )
 
     # ---------------------------------------------------------------------------
-    # MCP / API-only endpoints — thin wrappers returning gr.FileData so that
-    # Gradio/MCP can serve the output file correctly (mirrors the pattern used
-    # in https://github.com/qchapp/lungs-segmentation-app).
+    # MCP / API-only endpoints — thin wrappers that return the output file path
+    # as a plain string so Gradio/MCP can serve it correctly.
     # ---------------------------------------------------------------------------
     def _mcp_align_stack_to_reference(
         stack_file: str,
@@ -359,7 +357,7 @@ with gr.Blocks() as demo:
         mode: str = "RIGID_BODY",
         external_reference_file: Optional[str] = None,
         external_reference_index: int = 0,
-    ) -> gr.FileData:
+    ) -> str:
         """Align every frame in a TIFF stack to a chosen reference frame.
 
         Each frame in stack_file is registered to the selected reference frame
@@ -385,13 +383,13 @@ with gr.Blocks() as demo:
             stack_file, reference_index, mode,
             external_reference_file, external_reference_index,
         )
-        return gr.FileData(path=out, orig_name=os.path.basename(out), mime_type="image/tiff")
+        return out
 
     def _mcp_align_stack_to_stack(
         reference_stack_file: str,
         moving_stack_file: str,
         mode: str = "RIGID_BODY",
-    ) -> gr.FileData:
+    ) -> str:
         """Align every frame in a moving TIFF stack to the first frame of a reference stack.
 
         Args:
@@ -406,14 +404,14 @@ with gr.Blocks() as demo:
             The aligned output TIFF file.
         """
         out = align_stack_to_stack(reference_stack_file, moving_stack_file, mode)
-        return gr.FileData(path=out, orig_name=os.path.basename(out), mime_type="image/tiff")
+        return out
 
     def _mcp_align_frame_to_frame(
         stack_file: str,
         reference_index: int,
         moving_index: int,
         mode: str = "RIGID_BODY",
-    ) -> gr.FileData:
+    ) -> str:
         """Align a single moving frame to a reference frame within the same TIFF stack.
 
         Args:
@@ -428,7 +426,7 @@ with gr.Blocks() as demo:
             The aligned single-frame output TIFF file.
         """
         out = align_frame_to_frame(stack_file, reference_index, moving_index, mode)
-        return gr.FileData(path=out, orig_name=os.path.basename(out), mime_type="image/tiff")
+        return out
 
     gr.api(fn=_mcp_align_stack_to_reference, api_name="align_stack_to_reference")
     gr.api(fn=_mcp_align_stack_to_stack, api_name="align_stack_to_stack")
@@ -444,20 +442,12 @@ with gr.Blocks() as demo:
         # One-stack file case (for ref-based + frame-to-frame)
         if "file_url" in params:
             try:
-                url = params["file_url"]
-                if _is_demo_url(url):
-                    tmp_path = _demo_path_for_url(url)
-                    if not os.path.exists(tmp_path):
-                        urllib.request.urlretrieve(url, tmp_path)
-                else:
-                    fd, tmp_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
-                    os.close(fd)
-                    urllib.request.urlretrieve(url, tmp_path)
+                tmp_path = _resolve_path(params["file_url"], "file_url")
                 with tifffile.TiffFile(tmp_path) as tf:
                     max_frame = len(tf.pages) - 1
 
                 results[0] = tmp_path  # file_input
-                results[1] = gr.update(value=0, maximum=max_frame)  # ref_slider
+                results[1] = gr.update(value=0, maximum=max_frame)  # reference_frame_slider
                 results[2] = tmp_path  # frame_file
                 results[3] = gr.update(value=0, maximum=max_frame)  # ref_idx
                 results[4] = gr.update(value=1 if max_frame >= 1 else 0, maximum=max_frame)  # mov_idx
@@ -468,28 +458,8 @@ with gr.Blocks() as demo:
         # Two-stack file case (for stack-based alignment)
         if "file_url_1" in params and "file_url_2" in params:
             try:
-                u1, u2 = params["file_url_1"], params["file_url_2"]
-
-                if _is_demo_url(u1):
-                    tmp_path_1 = _demo_path_for_url(u1)
-                    if not os.path.exists(tmp_path_1):
-                        urllib.request.urlretrieve(u1, tmp_path_1)
-                else:
-                    fd, tmp_path_1 = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
-                    os.close(fd)
-                    urllib.request.urlretrieve(u1, tmp_path_1)
-
-                if _is_demo_url(u2):
-                    tmp_path_2 = _demo_path_for_url(u2)
-                    if not os.path.exists(tmp_path_2):
-                        urllib.request.urlretrieve(u2, tmp_path_2)
-                else:
-                    fd, tmp_path_2 = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
-                    os.close(fd)
-                    urllib.request.urlretrieve(u2, tmp_path_2)
-
-                results[5] = tmp_path_1  # ref_input
-                results[6] = tmp_path_2  # mov_input
+                results[5] = _resolve_path(params["file_url_1"], "file_url_1")  # ref_input
+                results[6] = _resolve_path(params["file_url_2"], "file_url_2")  # mov_input
             except Exception as e:
                 print(f"[Error loading file_url_1 or file_url_2] {e}")
 
@@ -497,7 +467,7 @@ with gr.Blocks() as demo:
 
     demo.load(
         load_from_query,
-        outputs=[file_input, ref_slider, frame_file, ref_idx, mov_idx, ref_input, mov_input],
+        outputs=[file_input, reference_frame_slider, frame_file, ref_idx, mov_idx, ref_input, mov_input],
         show_api=False,
     )
 
