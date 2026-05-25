@@ -498,7 +498,7 @@ with gr.Blocks() as demo:
 
     demo.load(
         load_from_query,
-        outputs=[file_input, ref_slider, frame_file, ref_idx, mov_idx, ref_input, mov_input],
+        outputs=[file_input, reference_ref_slider, frame_file, ref_idx, mov_idx, ref_input, mov_input],
         api_name=False,
     )
 
