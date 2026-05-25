@@ -154,7 +154,8 @@ def align_stack_to_stack(
         np.stack([sr.register_transform(ref_stack[0], fr) for fr in mov_stack])
     )
 
-    out_path = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
+    fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
     tifffile.imwrite(out_path, aligned, photometric="minisblack")
     return out_path
 
