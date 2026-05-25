@@ -1,4 +1,4 @@
 gradio[mcp]==5.49.1
-pystackreg
-tifffile
-imageio
+pystackreg==0.2.8
+tifffile==2025.3.30
+imageio==2.37.0
