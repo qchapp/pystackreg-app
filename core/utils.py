@@ -22,7 +22,8 @@ def normalize_stack(stack):
         f = frame.astype(np.float32)
         low, high = np.percentile(f, (1, 99))
         f = np.clip(f, low, high)
-        f = (f - f.min()) / (np.ptp(f) + 1e-8) * 255 if np.ptp(f) > 0 else np.zeros_like(f)
+        rng = f.max() - f.min()
+        f = (f - f.min()) / (rng + 1e-8) * 255 if rng > 0 else np.zeros_like(f)
         norm_stack.append(f.astype(np.uint8))
     return np.stack(norm_stack)
 

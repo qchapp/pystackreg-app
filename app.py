@@ -1,7 +1,6 @@
 import gradio as gr
 import numpy as np
 from PIL import Image
-import imageio.v2 as iio
 import tifffile
 import tempfile
 import urllib.request
@@ -20,27 +19,18 @@ from core.registration import (
 
 _start_cleaner()
 
-# Globals
-original_frames, aligned_frames = [], []
-ref_frames, mov_frames, reg_frames = [], [], []
-custom_stack, reg_result = [], None
-
 # Reset functions
 def reset_intra_stack():
-    global original_frames, aligned_frames
-    original_frames, aligned_frames = [], []
     return [None, gr.update(value=0, minimum=0, maximum=0), None, gr.update(value=0, minimum=0, maximum=0),
-            None, gr.update(value=0, minimum=0, maximum=0), None, gr.update(value=0, minimum=0, maximum=0), None]
+            None, gr.update(value=0, minimum=0, maximum=0), None, gr.update(value=0, minimum=0, maximum=0), None,
+            [], []]
 
 def reset_reference_based():
-    global ref_frames, mov_frames, reg_frames
-    ref_frames, mov_frames, reg_frames = [], [], []
     return [None, None, None, gr.update(value=0, minimum=0, maximum=0),
-            None, gr.update(value=0, minimum=0, maximum=0), None]
+            None, gr.update(value=0, minimum=0, maximum=0), None,
+            [], []]
 
 def reset_frame_to_frame():
-    global custom_stack, reg_result
-    custom_stack, reg_result = [], None
     return [None, gr.update(value=0, minimum=0, maximum=0),
             gr.update(value=0, minimum=0, maximum=0), None, None]
 
@@ -48,7 +38,6 @@ def reset_frame_to_frame():
 def intra_stack_align(f, ref_idx, ext_file, ext_idx, mode):
     if not f:
         raise gr.Error("Please upload a TIFF stack before running alignment.")
-    global original_frames, aligned_frames
     # Load original for UI preview
     orig_stack = load_stack(f)
     original_frames = [Image.fromarray(fr) for fr in orig_stack]
@@ -68,7 +57,8 @@ def intra_stack_align(f, ref_idx, ext_file, ext_idx, mode):
 
     return (
         original_frames[0], gr.update(value=0, maximum=len(original_frames)-1),
-        aligned_frames[0], gr.update(value=0, maximum=len(aligned_frames)-1), path
+        aligned_frames[0], gr.update(value=0, maximum=len(aligned_frames)-1), path,
+        original_frames, aligned_frames,
     )
 
 def reference_align(ref_file, mov_file, mode):
@@ -76,7 +66,6 @@ def reference_align(ref_file, mov_file, mode):
         raise gr.Error("Please upload a reference stack.")
     if not mov_file:
         raise gr.Error("Please upload a moving stack.")
-    global ref_frames, mov_frames, reg_frames
     ref_stack = load_stack(ref_file)
     ref_frames = [Image.fromarray(f) for f in ref_stack]
 
@@ -90,20 +79,16 @@ def reference_align(ref_file, mov_file, mode):
     # Load registered result for UI preview
     reg_stack = load_stack(path)
     reg_frames = [upscale(Image.fromarray(f)) for f in reg_stack]
-    mov_frames = reg_frames  # keep global consistent
 
     return (
         ref_frames[0], gr.update(value=0, maximum=len(ref_frames)-1),
-        reg_frames[0], gr.update(value=0, maximum=len(reg_frames)-1), path
+        reg_frames[0], gr.update(value=0, maximum=len(reg_frames)-1), path,
+        ref_frames, reg_frames,
     )
 
 def frame_to_frame_align(file, ref_idx, mov_idx, mode):
     if not file:
         raise gr.Error("Please upload a TIFF stack before running alignment.")
-    global custom_stack, reg_result
-    stack = load_stack(file)
-    custom_stack = [Image.fromarray(f) for f in stack]
-
     # Delegate to pure backend
     path = align_frame_to_frame(
         stack_file=file,
@@ -114,30 +99,23 @@ def frame_to_frame_align(file, ref_idx, mov_idx, mode):
 
     # Load aligned frame for UI preview
     result_stack = load_stack(path)
-    reg_result = Image.fromarray(result_stack[0])
+    return Image.fromarray(result_stack[0]), path
 
-    return reg_result, path
-
-# URL loading
-def load_from_url(request: gr.Request):
-    params = request.query_params
-    if "file_url" in params:
-        try:
-            url = params["file_url"]
-            if _is_demo_url(url):
-                tmp_path = _demo_path_for_url(url)
-                if not os.path.exists(tmp_path):
-                    urllib.request.urlretrieve(url, tmp_path)
-            else:
-                tmp_path = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
-                urllib.request.urlretrieve(url, tmp_path)
-            return [gr.update(value=tmp_path)]
-        except Exception as e:
-            print(f"[URL load failed] {e}")
-    return [None]
+def _count_frames(path: str) -> int:
+    """Return the number of frames in a TIFF file without loading pixel data."""
+    with tifffile.TiffFile(path) as tf:
+        return len(tf.pages)
 
 # Interface
 with gr.Blocks() as demo:
+    # Per-session state — one independent copy per connected user.
+    # Avoids the shared-globals race condition where concurrent users
+    # would overwrite each other's frame lists and see wrong previews.
+    original_frames_state = gr.State([])
+    aligned_frames_state = gr.State([])
+    ref_frames_state = gr.State([])
+    reg_frames_state = gr.State([])
+
     gr.Markdown("# 🧠 Pystackreg Web Application")
     gr.Markdown(citation_markdown)
 
@@ -174,7 +152,7 @@ with gr.Blocks() as demo:
         )
 
         ext_ref_file.change(
-            lambda f: gr.update(value=0, maximum=len(iio.mimread(f)) - 1) if f else gr.update(value=0, maximum=0),
+            lambda f: gr.update(value=0, maximum=_count_frames(f) - 1) if f else gr.update(value=0, maximum=0),
             ext_ref_file,
             ext_ref_slider,
             api_name=False,
@@ -199,7 +177,7 @@ with gr.Blocks() as demo:
         download = gr.File(label="Download")
 
         file_input.change(
-            lambda f: gr.update(value=0, maximum=len(iio.mimread(f)) - 1) if f else gr.update(value=0, maximum=0),
+            lambda f: gr.update(value=0, maximum=_count_frames(f) - 1) if f else gr.update(value=0, maximum=0),
             file_input,
             ref_slider,
             api_name=False,
@@ -208,24 +186,26 @@ with gr.Blocks() as demo:
         run_btn.click(
             intra_stack_align,
             [file_input, ref_slider, ext_ref_file, ext_ref_slider, mode_dropdown],
-            [original_image, original_slider, aligned_image, aligned_slider, download],
+            [original_image, original_slider, aligned_image, aligned_slider, download,
+             original_frames_state, aligned_frames_state],
             api_name=False,
         )
 
         original_slider.change(
-            lambda i: original_frames[i] if 0 <= i < len(original_frames) else None,
-            original_slider, original_image, api_name=False,
+            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
+            [original_slider, original_frames_state], original_image, api_name=False,
         )
         aligned_slider.change(
-            lambda i: aligned_frames[i] if 0 <= i < len(aligned_frames) else None,
-            aligned_slider, aligned_image, api_name=False,
+            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
+            [aligned_slider, aligned_frames_state], aligned_image, api_name=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
             reset_intra_stack,
             outputs=[
                 file_input, ref_slider, ext_ref_file, ext_ref_slider,
-                original_image, original_slider, aligned_image, aligned_slider, download
+                original_image, original_slider, aligned_image, aligned_slider, download,
+                original_frames_state, aligned_frames_state,
             ],
             api_name=False,
         )
@@ -267,21 +247,23 @@ with gr.Blocks() as demo:
         ref_btn.click(
             reference_align,
             [ref_input, mov_input, mode_dropdown_ref],
-            [ref_image, ref_slider, reg_image, reg_slider, download_ref],
+            [ref_image, ref_slider, reg_image, reg_slider, download_ref,
+             ref_frames_state, reg_frames_state],
             api_name=False,
         )
         ref_slider.change(
-            lambda i: ref_frames[i] if 0 <= i < len(ref_frames) else None,
-            ref_slider, ref_image, api_name=False,
+            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
+            [ref_slider, ref_frames_state], ref_image, api_name=False,
         )
         reg_slider.change(
-            lambda i: reg_frames[i] if 0 <= i < len(reg_frames) else None,
-            reg_slider, reg_image, api_name=False,
+            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
+            [reg_slider, reg_frames_state], reg_image, api_name=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
             reset_reference_based,
-            outputs=[ref_input, mov_input, ref_image, ref_slider, reg_image, reg_slider, download_ref],
+            outputs=[ref_input, mov_input, ref_image, ref_slider, reg_image, reg_slider, download_ref,
+                     ref_frames_state, reg_frames_state],
             api_name=False,
         )
 
@@ -311,7 +293,7 @@ with gr.Blocks() as demo:
         download_ftf = gr.File(label="Download")
 
         frame_file.change(
-            lambda f: [gr.update(value=0, maximum=len(iio.mimread(f)) - 1)] * 2 if f else [gr.update(value=0, maximum=0)] * 2,
+            lambda f: [gr.update(value=0, maximum=_count_frames(f) - 1)] * 2 if f else [gr.update(value=0, maximum=0)] * 2,
             frame_file, [ref_idx, mov_idx],
             api_name=False,
         )
@@ -363,8 +345,8 @@ with gr.Blocks() as demo:
                 else:
                     tmp_path = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
                     urllib.request.urlretrieve(url, tmp_path)
-                stack = iio.mimread(tmp_path)
-                max_frame = len(stack) - 1
+                with tifffile.TiffFile(tmp_path) as tf:
+                    max_frame = len(tf.pages) - 1
 
                 results[0] = tmp_path  # file_input
                 results[1] = gr.update(value=0, maximum=max_frame)  # ref_slider
