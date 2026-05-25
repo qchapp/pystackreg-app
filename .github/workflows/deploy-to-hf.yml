@@ -1,0 +1,81 @@
+name: Auto deploy to Hugging Face Space (qchapp/pystackreg-app)
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Generate Hugging Face README with YAML frontmatter (no commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tmp="$(mktemp)"
+          {
+            echo '---'
+            echo 'title: Pystackreg Web App'
+            echo 'emoji: 🧠'
+            echo 'colorFrom: indigo'
+            echo 'colorTo: blue'
+            echo 'sdk: gradio'
+            echo 'sdk_version: 5.49.1'
+            echo 'app_file: app.py'
+            echo 'pinned: false'
+            echo 'tags:'
+            echo '  - image-processing'
+            echo '  - registration'
+            echo '  - pystackreg'
+            echo '---'
+            echo
+            cat README.md
+          } > "$tmp"
+          mv "$tmp" README.md
+
+      - name: Deploy to HF Space (skip png)
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "HF_TOKEN is missing (add it in GitHub repo secrets)"
+            exit 1
+          fi
+
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade huggingface_hub
+
+          # Ensure the hf executable is on PATH (usually already is, but harmless)
+          echo "$(python -m site --user-base)/bin" >> "$GITHUB_PATH"
+
+          # Sanity checks (no --version flag on hf)
+          command -v hf
+          python -c "import huggingface_hub; print('huggingface_hub', huggingface_hub.__version__)"
+          hf --help | head -n 5
+
+          # Upload current folder to the Space repo root, excluding pngs
+          hf upload qchapp/pystackreg-app . . \
+            --repo-type space \
+            --token "$HF_TOKEN" \
+            --exclude "*.png" \
+            --exclude "images/*.png" \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --commit-message "Sync from GitHub Actions (skip png)"

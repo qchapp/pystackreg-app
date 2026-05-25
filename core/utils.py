@@ -22,7 +22,10 @@ def normalize_stack(stack):
         f = frame.astype(np.float32)
         low, high = np.percentile(f, (1, 99))
         f = np.clip(f, low, high)
-        f = (f - f.min()) / (np.ptp(f) + 1e-8) * 255 if np.ptp(f) > 0 else np.zeros_like(f)
+        fmin = f.min()
+        fmax = f.max()
+        rng = fmax - fmin
+        f = (f - fmin) / (rng + 1e-8) * 255 if rng > 0 else np.zeros_like(f)
         norm_stack.append(f.astype(np.uint8))
     return np.stack(norm_stack)
 
@@ -44,9 +47,6 @@ WORK_DIR = os.path.join(APP_TMP_ROOT, "work")   # cleaned periodically
 DEMO_DIR = os.path.join(APP_TMP_ROOT, "demo")   # persistent demo cache
 os.makedirs(WORK_DIR, exist_ok=True)
 os.makedirs(DEMO_DIR, exist_ok=True)
-
-# Direct all tempfile.* calls to WORK_DIR so cleanup is safe
-tempfile.tempdir = WORK_DIR
 
 TTL_SECONDS = 30 * 60  # 30 minutes
 
@@ -152,6 +152,6 @@ documentation_markdown = """
 
         ### 🧠 Credits
 
-        App developed by **Quentin Chapuis**  
+        App developed by **Quentin Chappuis**  
         Library: [`pystackreg`](https://github.com/glichtner/pystackreg) by **Georg Lichtenberg**
         """
