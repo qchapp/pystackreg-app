@@ -185,14 +185,14 @@ with gr.Blocks() as demo:
             ),
             use_ext_ref,
             [ref_slider, ext_ref_file, ext_ref_slider],
-            api_name=False,
+            show_api=False,
         )
 
         ext_ref_file.change(
             lambda f: gr.update(value=0, maximum=_count_frames(f) - 1) if f else gr.update(value=0, maximum=0),
             ext_ref_file,
             ext_ref_slider,
-            api_name=False,
+            show_api=False,
         )
 
         with gr.Row():
@@ -200,7 +200,7 @@ with gr.Blocks() as demo:
             mode_dropdown = gr.Dropdown(["TRANSLATION", "RIGID_BODY", "SCALED_ROTATION", "AFFINE", "BILINEAR"],
                                         value="RIGID_BODY", visible=False, label="Transformation Mode")
 
-        show_adv.change(lambda v: gr.update(visible=v), show_adv, mode_dropdown, api_name=False)
+        show_adv.change(lambda v: gr.update(visible=v), show_adv, mode_dropdown, show_api=False)
         run_btn = gr.Button("▶️ Align Stack")
 
         with gr.Row():
@@ -217,7 +217,7 @@ with gr.Blocks() as demo:
             lambda f: gr.update(value=0, maximum=_count_frames(f) - 1) if f else gr.update(value=0, maximum=0),
             file_input,
             ref_slider,
-            api_name=False,
+            show_api=False,
         )
 
         run_btn.click(
@@ -225,16 +225,16 @@ with gr.Blocks() as demo:
             [file_input, ref_slider, ext_ref_file, ext_ref_slider, mode_dropdown],
             [original_image, original_slider, aligned_image, aligned_slider, download,
              original_path_state, aligned_path_state],
-            api_name=False,
+            show_api=False,
         )
 
         original_slider.change(
             lambda i, path: _read_frame(path, i, scale=False),
-            [original_slider, original_path_state], original_image, api_name=False,
+            [original_slider, original_path_state], original_image, show_api=False,
         )
         aligned_slider.change(
             lambda i, path: _read_frame(path, i, scale=True),
-            [aligned_slider, aligned_path_state], aligned_image, api_name=False,
+            [aligned_slider, aligned_path_state], aligned_image, show_api=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
@@ -244,7 +244,7 @@ with gr.Blocks() as demo:
                 original_image, original_slider, aligned_image, aligned_slider, download,
                 original_path_state, aligned_path_state,
             ],
-            api_name=False,
+            show_api=False,
         )
 
     with gr.Tab("🎯 Stack-Based Alignment"):
@@ -268,7 +268,7 @@ with gr.Blocks() as demo:
             mode_dropdown_ref = gr.Dropdown(["TRANSLATION", "RIGID_BODY", "SCALED_ROTATION", "AFFINE", "BILINEAR"],
                                             value="RIGID_BODY", visible=False, label="Transformation Mode")
 
-        show_adv_ref.change(lambda v: gr.update(visible=v), show_adv_ref, mode_dropdown_ref, api_name=False)
+        show_adv_ref.change(lambda v: gr.update(visible=v), show_adv_ref, mode_dropdown_ref, show_api=False)
         ref_btn = gr.Button("▶️ Register")
 
         with gr.Row():
@@ -286,22 +286,22 @@ with gr.Blocks() as demo:
             [ref_input, mov_input, mode_dropdown_ref],
             [ref_image, ref_slider, reg_image, reg_slider, download_ref,
              ref_path_state, reg_path_state],
-            api_name=False,
+            show_api=False,
         )
         ref_slider.change(
             lambda i, path: _read_frame(path, i, scale=False),
-            [ref_slider, ref_path_state], ref_image, api_name=False,
+            [ref_slider, ref_path_state], ref_image, show_api=False,
         )
         reg_slider.change(
             lambda i, path: _read_frame(path, i, scale=True),
-            [reg_slider, reg_path_state], reg_image, api_name=False,
+            [reg_slider, reg_path_state], reg_image, show_api=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
             reset_reference_based,
             outputs=[ref_input, mov_input, ref_image, ref_slider, reg_image, reg_slider, download_ref,
                      ref_path_state, reg_path_state],
-            api_name=False,
+            show_api=False,
         )
 
     with gr.Tab("🧩 Frame-to-Frame Alignment"):
@@ -324,7 +324,7 @@ with gr.Blocks() as demo:
             mode_dropdown_ftf = gr.Dropdown(["TRANSLATION", "RIGID_BODY", "SCALED_ROTATION", "AFFINE", "BILINEAR"],
                                             value="RIGID_BODY", visible=False, label="Transformation Mode")
 
-        show_adv_ftf.change(lambda v: gr.update(visible=v), show_adv_ftf, mode_dropdown_ftf, api_name=False)
+        show_adv_ftf.change(lambda v: gr.update(visible=v), show_adv_ftf, mode_dropdown_ftf, show_api=False)
         frame_btn = gr.Button("▶️ Register Frame")
         frame_output = gr.Image(label="Registered Output")
         download_ftf = gr.File(label="Download")
@@ -332,20 +332,20 @@ with gr.Blocks() as demo:
         frame_file.change(
             lambda f: [gr.update(value=0, maximum=_count_frames(f) - 1)] * 2 if f else [gr.update(value=0, maximum=0)] * 2,
             frame_file, [ref_idx, mov_idx],
-            api_name=False,
+            show_api=False,
         )
 
         frame_btn.click(
             frame_to_frame_align,
             [frame_file, ref_idx, mov_idx, mode_dropdown_ftf],
             [frame_output, download_ftf],
-            api_name=False,
+            show_api=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
             reset_frame_to_frame,
             outputs=[frame_file, ref_idx, mov_idx, frame_output, download_ftf],
-            api_name=False,
+            show_api=False,
         )
 
     # ---------------------------------------------------------------------------
@@ -497,8 +497,8 @@ with gr.Blocks() as demo:
 
     demo.load(
         load_from_query,
-        outputs=[file_input, reference_ref_slider, frame_file, ref_idx, mov_idx, ref_input, mov_input],
-        api_name=False,
+        outputs=[file_input, ref_slider, frame_file, ref_idx, mov_idx, ref_input, mov_input],
+        show_api=False,
     )
 
 
