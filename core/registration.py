@@ -11,19 +11,43 @@ tool schemas, so all three are kept clear and complete.
 
 import os
 import tempfile
+import urllib.request
 from typing import Optional
 
 import numpy as np
 import tifffile
 from pystackreg import StackReg
 
-from core.utils import WORK_DIR, get_sr_mode, load_stack, normalize_stack
+from core.utils import WORK_DIR, DEMO_DIR, get_sr_mode, load_stack, normalize_stack
 
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
 VALID_MODES = {"TRANSLATION", "RIGID_BODY", "SCALED_ROTATION", "AFFINE", "BILINEAR"}
+
+
+def _resolve_path(path_or_url: str, label: str = "file") -> str:
+    """Return a local, sandbox-safe path for *path_or_url*.
+
+    - If the value starts with ``http://`` or ``https://``, the file is
+      downloaded to WORK_DIR and the local path is returned. This is the
+      intended flow for MCP clients, which cannot upload files directly.
+    - Otherwise the value is treated as a local path and must resolve within
+      the OS temp directory (covers WORK_DIR, DEMO_DIR, and Gradio's upload
+      staging area while blocking access to /etc, /home, /var, etc.).
+    """
+    if path_or_url.startswith(("http://", "https://")):
+        fd, local_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+        os.close(fd)
+        try:
+            urllib.request.urlretrieve(path_or_url, local_path)
+        except Exception as exc:
+            os.unlink(local_path)
+            raise ValueError(f"Failed to download {label} from '{path_or_url}': {exc}") from exc
+        return local_path
+    _require_file(path_or_url, label)
+    return path_or_url
 
 
 def _validate_mode(mode: str) -> None:
@@ -45,22 +69,45 @@ def _validate_index(idx: int, stack_len: int, name: str = "frame index") -> None
 
 
 def _require_file(path: str, label: str = "file") -> None:
-    """Raise an error if *path* is outside the sandbox or does not exist.
+    """Raise an error if *path* does not exist or is outside the app's sandbox.
 
-    The sandbox is the OS temp directory (e.g. /tmp). This covers WORK_DIR,
-    DEMO_DIR, and Gradio's own upload staging area while still blocking access
-    to sensitive paths such as /etc, /home, or /var.
-    Symlinks are resolved before comparison to prevent traversal attacks.
+    Allowed locations are WORK_DIR (outputs from previous tool calls, enabling
+    tool chaining) and DEMO_DIR (cached demo files). Symlinks are resolved
+    first to prevent traversal attacks.
+
+    Remote MCP clients should pass HTTP/HTTPS URLs; _resolve_path() downloads
+    them to WORK_DIR automatically.
     """
     real = os.path.realpath(path)
-    tmp_root = os.path.realpath(tempfile.gettempdir())
-    if not (real == tmp_root or real.startswith(tmp_root + os.sep)):
+    sandboxes = (os.path.realpath(WORK_DIR), os.path.realpath(DEMO_DIR))
+    if not any(real == s or real.startswith(s + os.sep) for s in sandboxes):
         raise ValueError(
-            f"{label} path is outside the allowed sandbox. "
-            "Only temporary files created by this application are permitted."
+            f"{label} must be an HTTP/HTTPS URL or a path returned by a previous "
+            "tool call. Pass a URL and it will be downloaded automatically."
         )
     if not os.path.isfile(path):
         raise FileNotFoundError(f"{label} not found: {path}")
+
+
+# ---------------------------------------------------------------------------
+# Private computation helpers (array-in / array-out, no file I/O)
+# ---------------------------------------------------------------------------
+
+def _run_align_to_reference(
+    stack: np.ndarray, ref_frame: np.ndarray, mode: str
+) -> np.ndarray:
+    """Register every frame in *stack* against *ref_frame*. Returns normalised uint8 array."""
+    sr = StackReg(get_sr_mode(mode))
+    return normalize_stack(np.stack([sr.register_transform(ref_frame, fr) for fr in stack]))
+
+
+def _run_align_to_stack(
+    ref_stack: np.ndarray, mov_stack: np.ndarray, mode: str
+) -> np.ndarray:
+    """Register every frame in *mov_stack* against the first frame of *ref_stack*.
+    Returns normalised uint8 array."""
+    sr = StackReg(get_sr_mode(mode))
+    return normalize_stack(np.stack([sr.register_transform(ref_stack[0], fr) for fr in mov_stack]))
 
 
 # ---------------------------------------------------------------------------
@@ -106,12 +153,12 @@ def align_stack_to_reference(
         ValueError: If *mode* is not one of the supported transformation modes.
     """
     _validate_mode(mode)
-    _require_file(stack_file, "stack_file")
+    stack_file = _resolve_path(stack_file, "stack_file")
 
     stack = load_stack(stack_file)
 
     if external_reference_file is not None:
-        _require_file(external_reference_file, "external_reference_file")
+        external_reference_file = _resolve_path(external_reference_file, "external_reference_file")
         ext_stack = load_stack(external_reference_file)
         _validate_index(external_reference_index, len(ext_stack), "external_reference_index")
         ref_frame = ext_stack[external_reference_index]
@@ -119,8 +166,7 @@ def align_stack_to_reference(
         _validate_index(reference_index, len(stack), "reference_index")
         ref_frame = stack[reference_index]
 
-    sr = StackReg(get_sr_mode(mode))
-    aligned = normalize_stack(np.stack([sr.register_transform(ref_frame, fr) for fr in stack]))
+    aligned = _run_align_to_reference(stack, ref_frame, mode)
 
     fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
     os.close(fd)
@@ -156,16 +202,13 @@ def align_stack_to_stack(
         ValueError: If *mode* is not one of the supported transformation modes.
     """
     _validate_mode(mode)
-    _require_file(reference_stack_file, "reference_stack_file")
-    _require_file(moving_stack_file, "moving_stack_file")
+    reference_stack_file = _resolve_path(reference_stack_file, "reference_stack_file")
+    moving_stack_file = _resolve_path(moving_stack_file, "moving_stack_file")
 
     ref_stack = load_stack(reference_stack_file)
     mov_stack = load_stack(moving_stack_file)
 
-    sr = StackReg(get_sr_mode(mode))
-    aligned = normalize_stack(
-        np.stack([sr.register_transform(ref_stack[0], fr) for fr in mov_stack])
-    )
+    aligned = _run_align_to_stack(ref_stack, mov_stack, mode)
 
     fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
     os.close(fd)
@@ -202,10 +245,9 @@ def align_frame_to_frame(
         ValueError: If *mode* is not one of the supported transformation modes.
     """
     _validate_mode(mode)
-    _require_file(stack_file, "stack_file")
+    stack_file = _resolve_path(stack_file, "stack_file")
 
     stack = load_stack(stack_file)
-    _validate_index(reference_index, len(stack), "reference_index")
     _validate_index(moving_index, len(stack), "moving_index")
 
     sr = StackReg(get_sr_mode(mode))

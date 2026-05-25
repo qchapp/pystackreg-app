@@ -5,9 +5,10 @@ import tifffile
 import tempfile
 import urllib.request
 import os
+from typing import Optional
 
 from core.utils import (
-    WORK_DIR, normalize_stack, upscale, load_stack,
+    WORK_DIR, DEMO_DIR, normalize_stack, upscale, load_stack,
     _is_demo_url, _demo_path_for_url,
     _start_cleaner, citation_markdown, documentation_markdown
 )
@@ -15,20 +16,44 @@ from core.registration import (
     align_stack_to_reference,
     align_stack_to_stack,
     align_frame_to_frame,
+    _run_align_to_reference,
+    _run_align_to_stack,
 )
 
 _start_cleaner()
 
-# Reset functions
+def _stage_for_backend(src: str) -> str:
+    """Return a sandbox-safe path for *src*.
+
+    Files already in WORK_DIR or DEMO_DIR are returned as-is. Files that
+    Gradio placed in its own upload staging area are hard-linked into WORK_DIR
+    (zero-copy on the same filesystem) so the backend sandbox accepts them.
+    Falls back to a regular copy if the hard link fails (cross-device).
+    """
+    import shutil
+    real = os.path.realpath(src)
+    sandboxes = (os.path.realpath(WORK_DIR), os.path.realpath(DEMO_DIR))
+    if any(real == s or real.startswith(s + os.sep) for s in sandboxes):
+        return src
+    suffix = os.path.splitext(src)[-1] or ".tif"
+    fd, dst = tempfile.mkstemp(suffix=suffix, dir=WORK_DIR)
+    os.close(fd)
+    os.unlink(dst)  # remove placeholder so os.link can create the entry
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+    return dst
+
 def reset_intra_stack():
     return [None, gr.update(value=0, minimum=0, maximum=0), None, gr.update(value=0, minimum=0, maximum=0),
             None, gr.update(value=0, minimum=0, maximum=0), None, gr.update(value=0, minimum=0, maximum=0), None,
-            [], []]
+            None, None]
 
 def reset_reference_based():
     return [None, None, None, gr.update(value=0, minimum=0, maximum=0),
             None, gr.update(value=0, minimum=0, maximum=0), None,
-            [], []]
+            None, None]
 
 def reset_frame_to_frame():
     return [None, gr.update(value=0, minimum=0, maximum=0),
@@ -38,27 +63,27 @@ def reset_frame_to_frame():
 def intra_stack_align(f, ref_idx, ext_file, ext_idx, mode):
     if not f:
         raise gr.Error("Please upload a TIFF stack before running alignment.")
-    # Load original for UI preview
+    f = _stage_for_backend(f)
+    # Load and normalise once — reused for both the UI preview and registration
     orig_stack = load_stack(f)
-    original_frames = [Image.fromarray(fr) for fr in orig_stack]
+    fd, orig_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
+    tifffile.imwrite(orig_path, orig_stack, photometric="minisblack")
+    n_orig = len(orig_stack)
 
-    # Delegate to pure backend
-    path = align_stack_to_reference(
-        stack_file=f,
-        reference_index=int(ref_idx),
-        mode=mode,
-        external_reference_file=ext_file if ext_file else None,
-        external_reference_index=int(ext_idx),
-    )
+    if ext_file:
+        ref_frame = load_stack(_stage_for_backend(ext_file))[int(ext_idx)]
+    else:
+        ref_frame = orig_stack[int(ref_idx)]
+    aligned = _run_align_to_reference(orig_stack, ref_frame, mode)
 
-    # Load aligned result for UI preview (already normalised — read raw to avoid double-normalisation)
-    aligned_stack = tifffile.imread(path)
-    aligned_frames = [upscale(Image.fromarray(fr)) for fr in aligned_stack]
-
+    fd, path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
+    tifffile.imwrite(path, aligned, photometric="minisblack")
     return (
-        original_frames[0], gr.update(value=0, maximum=len(original_frames)-1),
-        aligned_frames[0], gr.update(value=0, maximum=len(aligned_frames)-1), path,
-        original_frames, aligned_frames,
+        Image.fromarray(orig_stack[0]), gr.update(value=0, maximum=n_orig - 1),
+        upscale(Image.fromarray(aligned[0])), gr.update(value=0, maximum=len(aligned) - 1), path,
+        orig_path, path,
     )
 
 def reference_align(ref_file, mov_file, mode):
@@ -66,29 +91,31 @@ def reference_align(ref_file, mov_file, mode):
         raise gr.Error("Please upload a reference stack.")
     if not mov_file:
         raise gr.Error("Please upload a moving stack.")
+    ref_file = _stage_for_backend(ref_file)
+    mov_file = _stage_for_backend(mov_file)
+    # Load both stacks once — reference reused for preview and registration
     ref_stack = load_stack(ref_file)
-    ref_frames = [Image.fromarray(f) for f in ref_stack]
+    mov_stack = load_stack(mov_file)
+    fd, ref_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
+    tifffile.imwrite(ref_path, ref_stack, photometric="minisblack")
+    n_ref = len(ref_stack)
 
-    # Delegate to pure backend
-    path = align_stack_to_stack(
-        reference_stack_file=ref_file,
-        moving_stack_file=mov_file,
-        mode=mode,
-    )
+    aligned = _run_align_to_stack(ref_stack, mov_stack, mode)
 
-    # Load registered result for UI preview (already normalised — read raw to avoid double-normalisation)
-    reg_stack = tifffile.imread(path)
-    reg_frames = [upscale(Image.fromarray(f)) for f in reg_stack]
-
+    fd, path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
+    tifffile.imwrite(path, aligned, photometric="minisblack")
     return (
-        ref_frames[0], gr.update(value=0, maximum=len(ref_frames)-1),
-        reg_frames[0], gr.update(value=0, maximum=len(reg_frames)-1), path,
-        ref_frames, reg_frames,
+        Image.fromarray(ref_stack[0]), gr.update(value=0, maximum=n_ref - 1),
+        upscale(Image.fromarray(aligned[0])), gr.update(value=0, maximum=len(aligned) - 1), path,
+        ref_path, path,
     )
 
 def frame_to_frame_align(file, ref_idx, mov_idx, mode):
     if not file:
         raise gr.Error("Please upload a TIFF stack before running alignment.")
+    file = _stage_for_backend(file)
     # Delegate to pure backend
     path = align_frame_to_frame(
         stack_file=file,
@@ -101,6 +128,17 @@ def frame_to_frame_align(file, ref_idx, mov_idx, mode):
     result_stack = tifffile.imread(path)
     return Image.fromarray(result_stack[0]), path
 
+def _read_frame(path, idx, scale=False):
+    """Read a single frame from a TIFF file by index, return a PIL Image."""
+    if not path:
+        return None
+    try:
+        frame = tifffile.imread(path, key=int(idx))
+        img = Image.fromarray(frame)
+        return upscale(img) if scale else img
+    except Exception:
+        return None
+
 def _count_frames(path: str) -> int:
     """Return the number of frames in a TIFF file without loading pixel data."""
     with tifffile.TiffFile(path) as tf:
@@ -111,10 +149,10 @@ with gr.Blocks() as demo:
     # Per-session state — one independent copy per connected user.
     # Avoids the shared-globals race condition where concurrent users
     # would overwrite each other's frame lists and see wrong previews.
-    original_frames_state = gr.State([])
-    aligned_frames_state = gr.State([])
-    ref_frames_state = gr.State([])
-    reg_frames_state = gr.State([])
+    original_path_state = gr.State(None)
+    aligned_path_state = gr.State(None)
+    ref_path_state = gr.State(None)
+    reg_path_state = gr.State(None)
 
     gr.Markdown("# 🧠 Pystackreg Web Application")
     gr.Markdown(citation_markdown)
@@ -187,17 +225,17 @@ with gr.Blocks() as demo:
             intra_stack_align,
             [file_input, ref_slider, ext_ref_file, ext_ref_slider, mode_dropdown],
             [original_image, original_slider, aligned_image, aligned_slider, download,
-             original_frames_state, aligned_frames_state],
+             original_path_state, aligned_path_state],
             api_name=False,
         )
 
         original_slider.change(
-            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
-            [original_slider, original_frames_state], original_image, api_name=False,
+            lambda i, path: _read_frame(path, i, scale=False),
+            [original_slider, original_path_state], original_image, api_name=False,
         )
         aligned_slider.change(
-            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
-            [aligned_slider, aligned_frames_state], aligned_image, api_name=False,
+            lambda i, path: _read_frame(path, i, scale=True),
+            [aligned_slider, aligned_path_state], aligned_image, api_name=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
@@ -205,7 +243,7 @@ with gr.Blocks() as demo:
             outputs=[
                 file_input, ref_slider, ext_ref_file, ext_ref_slider,
                 original_image, original_slider, aligned_image, aligned_slider, download,
-                original_frames_state, aligned_frames_state,
+                original_path_state, aligned_path_state,
             ],
             api_name=False,
         )
@@ -248,22 +286,22 @@ with gr.Blocks() as demo:
             reference_align,
             [ref_input, mov_input, mode_dropdown_ref],
             [ref_image, ref_slider, reg_image, reg_slider, download_ref,
-             ref_frames_state, reg_frames_state],
+             ref_path_state, reg_path_state],
             api_name=False,
         )
         ref_slider.change(
-            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
-            [ref_slider, ref_frames_state], ref_image, api_name=False,
+            lambda i, path: _read_frame(path, i, scale=False),
+            [ref_slider, ref_path_state], ref_image, api_name=False,
         )
         reg_slider.change(
-            lambda i, frames: frames[i] if 0 <= i < len(frames) else None,
-            [reg_slider, reg_frames_state], reg_image, api_name=False,
+            lambda i, path: _read_frame(path, i, scale=True),
+            [reg_slider, reg_path_state], reg_image, api_name=False,
         )
 
         gr.Button("🔄 Reset Tab").click(
             reset_reference_based,
             outputs=[ref_input, mov_input, ref_image, ref_slider, reg_image, reg_slider, download_ref,
-                     ref_frames_state, reg_frames_state],
+                     ref_path_state, reg_path_state],
             api_name=False,
         )
 
@@ -312,20 +350,90 @@ with gr.Blocks() as demo:
         )
 
     # ---------------------------------------------------------------------------
-    # MCP / API-only endpoints — exposed as MCP tools when mcp_server=True
+    # MCP / API-only endpoints — thin wrappers returning gr.FileData so that
+    # Gradio/MCP can serve the output file correctly (mirrors the pattern used
+    # in https://github.com/qchapp/lungs-segmentation-app).
     # ---------------------------------------------------------------------------
-    gr.api(
-        fn=align_stack_to_reference,
-        api_name="align_stack_to_reference",
-    )
-    gr.api(
-        fn=align_stack_to_stack,
-        api_name="align_stack_to_stack",
-    )
-    gr.api(
-        fn=align_frame_to_frame,
-        api_name="align_frame_to_frame",
-    )
+    def _mcp_align_stack_to_reference(
+        stack_file: str,
+        reference_index: int = 0,
+        mode: str = "RIGID_BODY",
+        external_reference_file: Optional[str] = None,
+        external_reference_index: int = 0,
+    ) -> gr.FileData:
+        """Align every frame in a TIFF stack to a chosen reference frame.
+
+        Each frame in stack_file is registered to the selected reference frame
+        using the chosen transformation model. The reference frame can come from
+        the same stack or from a separate external TIFF stack.
+
+        Args:
+            stack_file: Path or HTTP/HTTPS URL to the input TIFF stack.
+            reference_index: Zero-based index of the reference frame inside
+                stack_file (ignored when external_reference_file is provided).
+                Default is 0.
+            mode: Transformation model. One of: TRANSLATION, RIGID_BODY,
+                SCALED_ROTATION, AFFINE, BILINEAR. Default is RIGID_BODY.
+            external_reference_file: Optional path or URL to an external TIFF
+                stack from which the reference frame is taken.
+            external_reference_index: Zero-based index of the reference frame
+                inside external_reference_file. Default is 0.
+
+        Returns:
+            The aligned output TIFF file.
+        """
+        out = align_stack_to_reference(
+            stack_file, reference_index, mode,
+            external_reference_file, external_reference_index,
+        )
+        return gr.FileData(path=out, orig_name=os.path.basename(out), mime_type="image/tiff")
+
+    def _mcp_align_stack_to_stack(
+        reference_stack_file: str,
+        moving_stack_file: str,
+        mode: str = "RIGID_BODY",
+    ) -> gr.FileData:
+        """Align every frame in a moving TIFF stack to the first frame of a reference stack.
+
+        Args:
+            reference_stack_file: Path or HTTP/HTTPS URL to the reference TIFF
+                stack. Its first frame is used as the alignment target.
+            moving_stack_file: Path or HTTP/HTTPS URL to the moving TIFF stack
+                to align.
+            mode: Transformation model. One of: TRANSLATION, RIGID_BODY,
+                SCALED_ROTATION, AFFINE, BILINEAR. Default is RIGID_BODY.
+
+        Returns:
+            The aligned output TIFF file.
+        """
+        out = align_stack_to_stack(reference_stack_file, moving_stack_file, mode)
+        return gr.FileData(path=out, orig_name=os.path.basename(out), mime_type="image/tiff")
+
+    def _mcp_align_frame_to_frame(
+        stack_file: str,
+        reference_index: int,
+        moving_index: int,
+        mode: str = "RIGID_BODY",
+    ) -> gr.FileData:
+        """Align a single moving frame to a reference frame within the same TIFF stack.
+
+        Args:
+            stack_file: Path or HTTP/HTTPS URL to the TIFF stack containing both
+                frames.
+            reference_index: Zero-based index of the reference frame.
+            moving_index: Zero-based index of the frame to align.
+            mode: Transformation model. One of: TRANSLATION, RIGID_BODY,
+                SCALED_ROTATION, AFFINE, BILINEAR. Default is RIGID_BODY.
+
+        Returns:
+            The aligned single-frame output TIFF file.
+        """
+        out = align_frame_to_frame(stack_file, reference_index, moving_index, mode)
+        return gr.FileData(path=out, orig_name=os.path.basename(out), mime_type="image/tiff")
+
+    gr.api(fn=_mcp_align_stack_to_reference, api_name="align_stack_to_reference")
+    gr.api(fn=_mcp_align_stack_to_stack, api_name="align_stack_to_stack")
+    gr.api(fn=_mcp_align_frame_to_frame, api_name="align_frame_to_frame")
 
     # ---------------------------------------------------------------------------
     # Page-load handler (UI only — not an MCP tool)
