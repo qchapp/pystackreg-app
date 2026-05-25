@@ -65,11 +65,21 @@ def _block_private_url(url: str) -> None:
             or addr.is_link_local
             or addr.is_reserved
             or addr.is_multicast
+            or addr.is_unspecified
         ):
             raise ValueError(
                 f"Requests to private or internal addresses are not allowed "
                 f"('{host}' resolved to {addr})."
             )
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _block_private_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_SAFE_URL_OPENER = urllib.request.build_opener(_SafeRedirectHandler)
 
 
 def _download_tiff_to_work_dir(url: str, label: str) -> str:
@@ -88,7 +98,8 @@ def _download_tiff_to_work_dir(url: str, label: str) -> str:
     first4 = b""
 
     try:
-        with urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT) as resp, open(local_path, "wb") as f:  # noqa: S310
+        with _SAFE_URL_OPENER.open(url, timeout=_DOWNLOAD_TIMEOUT) as resp, open(local_path, "wb") as f:
+            _block_private_url(resp.geturl())
             while True:
                 chunk = resp.read(1024 * 1024)
                 if not chunk:
