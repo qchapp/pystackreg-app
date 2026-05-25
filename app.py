@@ -7,7 +7,7 @@ import os
 from typing import Optional
 
 from core.utils import (
-    WORK_DIR, DEMO_DIR, normalize_stack, upscale, load_stack,
+    WORK_DIR, DEMO_DIR, upscale, load_stack,
     _is_demo_url, _demo_path_for_url,
     _start_cleaner, citation_markdown, documentation_markdown
 )
