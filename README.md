@@ -108,6 +108,106 @@ https://huggingface.co/spaces/qchapp/pystackreg-app?file_url_1=https://github.co
 
 ---
 
+## 🤖 MCP Server
+
+This app doubles as a **Model Context Protocol (MCP) server**, exposing the three core registration workflows as callable MCP tools that any MCP-compatible client (e.g. Claude Desktop, VS Code Copilot) can invoke programmatically.
+
+### Running the app as an MCP server
+
+```sh
+python app.py
+```
+
+The human-facing Gradio UI is available at [http://localhost:7860](http://localhost:7860) as usual.  
+The MCP endpoint is available at:
+
+- **MCP server**: `http://localhost:7860/gradio_api/mcp/sse`
+- **MCP schema**: `http://localhost:7860/gradio_api/mcp/schema`
+
+### Available MCP tools
+
+#### 1. `align_stack_to_reference`
+Align every frame in a TIFF stack to a chosen reference frame (intra-stack alignment).
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `stack_file` | `str` | — | Path to the input TIFF stack |
+| `reference_index` | `int` | `0` | Zero-based index of the reference frame inside the stack |
+| `mode` | `str` | `"RIGID_BODY"` | Transformation mode (see below) |
+| `external_reference_file` | `str \| None` | `None` | Optional path to an external reference TIFF stack |
+| `external_reference_index` | `int` | `0` | Frame index inside the external reference stack |
+
+**Returns**: path to the aligned output TIFF file.
+
+**Example arguments:**
+```json
+{
+  "stack_file": "/data/pc12-unreg.tif",
+  "reference_index": 0,
+  "mode": "RIGID_BODY"
+}
+```
+
+---
+
+#### 2. `align_stack_to_stack`
+Align every frame in a moving TIFF stack to the first frame of a reference TIFF stack.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `reference_stack_file` | `str` | — | Path to the reference TIFF stack |
+| `moving_stack_file` | `str` | — | Path to the moving TIFF stack |
+| `mode` | `str` | `"RIGID_BODY"` | Transformation mode (see below) |
+
+**Returns**: path to the aligned output TIFF file.
+
+**Example arguments:**
+```json
+{
+  "reference_stack_file": "/data/pc12-unreg.tif",
+  "moving_stack_file": "/data/pc12-reg-translation.tif",
+  "mode": "TRANSLATION"
+}
+```
+
+---
+
+#### 3. `align_frame_to_frame`
+Align a single moving frame to a reference frame within the same TIFF stack.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `stack_file` | `str` | — | Path to the TIFF stack containing both frames |
+| `reference_index` | `int` | — | Zero-based index of the reference frame |
+| `moving_index` | `int` | — | Zero-based index of the frame to align |
+| `mode` | `str` | `"RIGID_BODY"` | Transformation mode (see below) |
+
+**Returns**: path to the aligned single-frame output TIFF file.
+
+**Example arguments:**
+```json
+{
+  "stack_file": "/data/pc12-unreg.tif",
+  "reference_index": 0,
+  "moving_index": 5,
+  "mode": "AFFINE"
+}
+```
+
+---
+
+### Supported transformation modes
+
+| Mode | Description |
+|---|---|
+| `TRANSLATION` | Translation only (x/y shift) |
+| `RIGID_BODY` | Translation + rotation (default) |
+| `SCALED_ROTATION` | Translation + rotation + uniform scaling |
+| `AFFINE` | Full affine transformation |
+| `BILINEAR` | Bilinear (non-linear) transformation |
+
+---
+
 ### 📚 Credits
 
 - **App Author**: [Quentin Chappuis](https://github.com/qchapp)  

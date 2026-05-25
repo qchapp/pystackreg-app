@@ -45,9 +45,6 @@ DEMO_DIR = os.path.join(APP_TMP_ROOT, "demo")   # persistent demo cache
 os.makedirs(WORK_DIR, exist_ok=True)
 os.makedirs(DEMO_DIR, exist_ok=True)
 
-# Direct all tempfile.* calls to WORK_DIR so cleanup is safe
-tempfile.tempdir = WORK_DIR
-
 TTL_SECONDS = 30 * 60  # 30 minutes
 
 def _cleanup_old_files(folder, older_than_seconds):
