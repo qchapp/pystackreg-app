@@ -1,4 +1,5 @@
 import gradio as gr
+import numpy as np
 from PIL import Image
 import tifffile
 import tempfile
@@ -50,8 +51,8 @@ def intra_stack_align(f, ref_idx, ext_file, ext_idx, mode):
         external_reference_index=int(ext_idx),
     )
 
-    # Load aligned result for UI preview
-    aligned_stack = load_stack(path)
+    # Load aligned result for UI preview (already normalised — read raw to avoid double-normalisation)
+    aligned_stack = tifffile.imread(path)
     aligned_frames = [upscale(Image.fromarray(fr)) for fr in aligned_stack]
 
     return (
@@ -75,8 +76,8 @@ def reference_align(ref_file, mov_file, mode):
         mode=mode,
     )
 
-    # Load registered result for UI preview
-    reg_stack = load_stack(path)
+    # Load registered result for UI preview (already normalised — read raw to avoid double-normalisation)
+    reg_stack = tifffile.imread(path)
     reg_frames = [upscale(Image.fromarray(f)) for f in reg_stack]
 
     return (
@@ -96,8 +97,8 @@ def frame_to_frame_align(file, ref_idx, mov_idx, mode):
         mode=mode,
     )
 
-    # Load aligned frame for UI preview
-    result_stack = load_stack(path)
+    # Load aligned frame for UI preview (already normalised — read raw to avoid double-normalisation)
+    result_stack = tifffile.imread(path)
     return Image.fromarray(result_stack[0]), path
 
 def _count_frames(path: str) -> int:
@@ -342,7 +343,8 @@ with gr.Blocks() as demo:
                     if not os.path.exists(tmp_path):
                         urllib.request.urlretrieve(url, tmp_path)
                 else:
-                    tmp_path = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
+                    fd, tmp_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+                    os.close(fd)
                     urllib.request.urlretrieve(url, tmp_path)
                 with tifffile.TiffFile(tmp_path) as tf:
                     max_frame = len(tf.pages) - 1
@@ -366,7 +368,8 @@ with gr.Blocks() as demo:
                     if not os.path.exists(tmp_path_1):
                         urllib.request.urlretrieve(u1, tmp_path_1)
                 else:
-                    tmp_path_1 = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
+                    fd, tmp_path_1 = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+                    os.close(fd)
                     urllib.request.urlretrieve(u1, tmp_path_1)
 
                 if _is_demo_url(u2):
@@ -374,7 +377,8 @@ with gr.Blocks() as demo:
                     if not os.path.exists(tmp_path_2):
                         urllib.request.urlretrieve(u2, tmp_path_2)
                 else:
-                    tmp_path_2 = tempfile.NamedTemporaryFile(suffix=".tif", delete=False, dir=WORK_DIR).name
+                    fd, tmp_path_2 = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+                    os.close(fd)
                     urllib.request.urlretrieve(u2, tmp_path_2)
 
                 results[5] = tmp_path_1  # ref_input

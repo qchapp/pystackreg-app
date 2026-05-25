@@ -45,7 +45,20 @@ def _validate_index(idx: int, stack_len: int, name: str = "frame index") -> None
 
 
 def _require_file(path: str, label: str = "file") -> None:
-    """Raise FileNotFoundError if *path* does not point to an existing file."""
+    """Raise an error if *path* is outside the sandbox or does not exist.
+
+    The sandbox is the OS temp directory (e.g. /tmp). This covers WORK_DIR,
+    DEMO_DIR, and Gradio's own upload staging area while still blocking access
+    to sensitive paths such as /etc, /home, or /var.
+    Symlinks are resolved before comparison to prevent traversal attacks.
+    """
+    real = os.path.realpath(path)
+    tmp_root = os.path.realpath(tempfile.gettempdir())
+    if not (real == tmp_root or real.startswith(tmp_root + os.sep)):
+        raise ValueError(
+            f"{label} path is outside the allowed sandbox. "
+            "Only temporary files created by this application are permitted."
+        )
     if not os.path.isfile(path):
         raise FileNotFoundError(f"{label} not found: {path}")
 
@@ -109,8 +122,8 @@ def align_stack_to_reference(
     sr = StackReg(get_sr_mode(mode))
     aligned = normalize_stack(np.stack([sr.register_transform(ref_frame, fr) for fr in stack]))
 
-    temp_fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
-    os.close(temp_fd)
+    fd, out_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
+    os.close(fd)
     tifffile.imwrite(out_path, aligned, photometric="minisblack")
     return out_path
 

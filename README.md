@@ -3,7 +3,7 @@ A web-based application for image stack registration powered by **Gradio** and *
 This tool allows users to align and stabilize multi-frame TIFF images using a variety of transformation models.
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/qchapp/pystackreg-app/refs/heads/feature/mcp/images/app.png" height="500">
+    <img src="https://raw.githubusercontent.com/qchapp/pystackreg-app/master/images/app.png" height="500">
 </p>
 
 ---
