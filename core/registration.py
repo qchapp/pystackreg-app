@@ -79,8 +79,8 @@ def _resolve_path(path_or_url: str, label: str = "file") -> str:
       downloaded to WORK_DIR and the local path is returned. This is the
       intended flow for MCP clients, which cannot upload files directly.
     - Otherwise the value is treated as a local path and must resolve within
-      the OS temp directory (covers WORK_DIR, DEMO_DIR, and Gradio's upload
-      staging area while blocking access to /etc, /home, /var, etc.).
+      the app sandbox enforced by _require_file(): WORK_DIR (for outputs from
+      previous tool calls) or DEMO_DIR (for cached demo files).
     """
     if path_or_url.startswith(("http://", "https://")):
         _block_private_url(path_or_url)
