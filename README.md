@@ -110,7 +110,7 @@ https://huggingface.co/spaces/qchapp/pystackreg-app?file_url_1=https://github.co
 
 ## 🤖 MCP Server
 
-This app doubles as a **Model Context Protocol (MCP) server**, exposing the three core registration workflows as callable MCP tools that any MCP-compatible client (e.g. Claude Desktop, VS Code Copilot) can invoke programmatically.
+This app doubles as a **Model Context Protocol (MCP) server**, exposing the three core registration workflows as callable MCP tools that any MCP-compatible client (e.g. Claude Desktop, GitHub Copilot in VS Code) can invoke programmatically.
 
 ### Running the app as an MCP server
 
