@@ -9,8 +9,11 @@ Gradio MCP uses function names, type hints, and docstrings to build MCP
 tool schemas, so all three are kept clear and complete.
 """
 
+import ipaddress
 import os
+import socket
 import tempfile
+import urllib.parse
 import urllib.request
 from typing import Optional
 
@@ -26,6 +29,48 @@ from core.utils import WORK_DIR, DEMO_DIR, get_sr_mode, load_stack, normalize_st
 
 VALID_MODES = {"TRANSLATION", "RIGID_BODY", "SCALED_ROTATION", "AFFINE", "BILINEAR"}
 
+# Maximum size allowed for HTTP downloads (prevents resource-exhaustion attacks).
+_MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+_DOWNLOAD_TIMEOUT = 30  # seconds
+
+# Valid TIFF magic byte sequences (little/big-endian classic and BigTIFF).
+_TIFF_MAGIC = (
+    b"II\x2A\x00",  # little-endian TIFF
+    b"MM\x00\x2A",  # big-endian TIFF
+    b"II\x2B\x00",  # little-endian BigTIFF
+    b"MM\x00\x2B",  # big-endian BigTIFF
+)
+
+
+def _block_private_url(url: str) -> None:
+    """Raise ValueError if *url* resolves to a private, loopback, link-local,
+    reserved, or multicast address (SSRF protection)."""
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise ValueError(f"Could not parse host from URL: {url!r}")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise ValueError(f"Could not resolve host '{host}': {exc}") from exc
+    for info in infos:
+        addr_str = info[4][0]
+        try:
+            addr = ipaddress.ip_address(addr_str)
+        except ValueError:
+            continue
+        if (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_reserved
+            or addr.is_multicast
+        ):
+            raise ValueError(
+                f"Requests to private or internal addresses are not allowed "
+                f"('{host}' resolved to {addr})."
+            )
+
 
 def _resolve_path(path_or_url: str, label: str = "file") -> str:
     """Return a local, sandbox-safe path for *path_or_url*.
@@ -38,13 +83,26 @@ def _resolve_path(path_or_url: str, label: str = "file") -> str:
       staging area while blocking access to /etc, /home, /var, etc.).
     """
     if path_or_url.startswith(("http://", "https://")):
+        _block_private_url(path_or_url)
         fd, local_path = tempfile.mkstemp(suffix=".tif", dir=WORK_DIR)
         os.close(fd)
         try:
-            urllib.request.urlretrieve(path_or_url, local_path)
+            with urllib.request.urlopen(path_or_url, timeout=_DOWNLOAD_TIMEOUT) as resp:  # noqa: S310
+                data = resp.read(_MAX_DOWNLOAD_BYTES + 1)
         except Exception as exc:
             os.unlink(local_path)
             raise ValueError(f"Failed to download {label} from '{path_or_url}': {exc}") from exc
+        if len(data) > _MAX_DOWNLOAD_BYTES:
+            os.unlink(local_path)
+            raise ValueError(
+                f"{label} exceeds the maximum allowed download size of "
+                f"{_MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB."
+            )
+        if not any(data.startswith(magic) for magic in _TIFF_MAGIC):
+            os.unlink(local_path)
+            raise ValueError(f"{label} does not appear to be a valid TIFF file.")
+        with open(local_path, "wb") as f:
+            f.write(data)
         return local_path
     _require_file(path_or_url, label)
     return path_or_url
@@ -248,6 +306,7 @@ def align_frame_to_frame(
     stack_file = _resolve_path(stack_file, "stack_file")
 
     stack = load_stack(stack_file)
+    _validate_index(reference_index, len(stack), "reference_index")
     _validate_index(moving_index, len(stack), "moving_index")
 
     sr = StackReg(get_sr_mode(mode))
