@@ -354,7 +354,7 @@ with gr.Blocks() as demo:
 
     # ---------------------------------------------------------------------------
     # MCP / API-only endpoints — thin wrappers that return the output file 
-    # as a Grado FileData so Gradio/MCP can serve it correctly.
+    # as a Gradio FileData so Gradio/MCP can serve it correctly.
     # ---------------------------------------------------------------------------
     def _as_mcp_file(path: str) -> gr.FileData:
         """Wrap a generated local file so Gradio exposes it as a served file."""
@@ -371,7 +371,7 @@ with gr.Blocks() as demo:
         mode: str = "RIGID_BODY",
         external_reference_file: Optional[str] = None,
         external_reference_index: int = 0,
-    ) -> str:
+    ) -> gr.FileData:
         """Align every frame in a TIFF stack to a chosen reference frame.
 
         Each frame in stack_file is registered to the selected reference frame
@@ -403,7 +403,7 @@ with gr.Blocks() as demo:
         reference_stack_file: str,
         moving_stack_file: str,
         mode: str = "RIGID_BODY",
-    ) -> str:
+    ) -> gr.FileData:
         """Align every frame in a moving TIFF stack to the first frame of a reference stack.
 
         Args:
@@ -425,7 +425,7 @@ with gr.Blocks() as demo:
         reference_index: int,
         moving_index: int,
         mode: str = "RIGID_BODY",
-    ) -> str:
+    ) -> gr.FileData:
         """Align a single moving frame to a reference frame within the same TIFF stack.
 
         Args:
