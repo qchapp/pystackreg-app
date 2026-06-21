@@ -353,9 +353,18 @@ with gr.Blocks() as demo:
         )
 
     # ---------------------------------------------------------------------------
-    # MCP / API-only endpoints — thin wrappers that return the output file path
-    # as a plain string so Gradio/MCP can serve it correctly.
+    # MCP / API-only endpoints — thin wrappers that return the output file 
+    # as a Grado FileData so Gradio/MCP can serve it correctly.
     # ---------------------------------------------------------------------------
+    def _as_mcp_file(path: str) -> gr.FileData:
+        """Wrap a generated local file so Gradio exposes it as a served file."""
+        return gr.FileData(
+            path=path,
+            orig_name=os.path.basename(path),
+            mime_type="image/tiff",
+            size=os.path.getsize(path),
+        )
+
     def _mcp_align_stack_to_reference(
         stack_file: str,
         reference_index: int = 0,
@@ -388,7 +397,7 @@ with gr.Blocks() as demo:
             stack_file, reference_index, mode,
             external_reference_file, external_reference_index,
         )
-        return out
+        return _as_mcp_file(out)
 
     def _mcp_align_stack_to_stack(
         reference_stack_file: str,
@@ -409,7 +418,7 @@ with gr.Blocks() as demo:
             The aligned output TIFF file.
         """
         out = align_stack_to_stack(reference_stack_file, moving_stack_file, mode)
-        return out
+        return _as_mcp_file(out)
 
     def _mcp_align_frame_to_frame(
         stack_file: str,
@@ -431,7 +440,7 @@ with gr.Blocks() as demo:
             The aligned single-frame output TIFF file.
         """
         out = align_frame_to_frame(stack_file, reference_index, moving_index, mode)
-        return out
+        return _as_mcp_file(out)
 
     gr.api(fn=_mcp_align_stack_to_reference, api_name="align_stack_to_reference")
     gr.api(fn=_mcp_align_stack_to_stack, api_name="align_stack_to_stack")
