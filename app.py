@@ -3,7 +3,7 @@ from PIL import Image
 import tifffile
 import tempfile
 import os
-from typing import Optional
+from typing import Optional, Literal
 
 from core.utils import (
     WORK_DIR, DEMO_DIR, upscale, load_stack,
@@ -17,6 +17,14 @@ from core.registration import (
     _run_align_to_stack,
     _resolve_path,
 )
+
+TransformationMode = Literal[
+    "TRANSLATION",
+    "RIGID_BODY",
+    "SCALED_ROTATION",
+    "AFFINE",
+    "BILINEAR",
+]
 
 _start_cleaner()
 
@@ -368,7 +376,7 @@ with gr.Blocks() as demo:
     def _mcp_align_stack_to_reference(
         stack_file: str,
         reference_index: int = 0,
-        mode: str = "RIGID_BODY",
+        mode: TransformationMode = "RIGID_BODY",
         external_reference_file: Optional[str] = None,
         external_reference_index: int = 0,
     ) -> gr.FileData:
@@ -402,7 +410,7 @@ with gr.Blocks() as demo:
     def _mcp_align_stack_to_stack(
         reference_stack_file: str,
         moving_stack_file: str,
-        mode: str = "RIGID_BODY",
+        mode: TransformationMode = "RIGID_BODY",
     ) -> gr.FileData:
         """Align every frame in a moving TIFF stack to the first frame of a reference stack.
 
@@ -424,7 +432,7 @@ with gr.Blocks() as demo:
         stack_file: str,
         reference_index: int,
         moving_index: int,
-        mode: str = "RIGID_BODY",
+        mode: TransformationMode = "RIGID_BODY",
     ) -> gr.FileData:
         """Align a single moving frame to a reference frame within the same TIFF stack.
 
